@@ -1,25 +1,33 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
-	"text/template"
+
+	"github.com/jgrecu/url-shortner-go/internal/controllers"
+	"github.com/jgrecu/url-shortner-go/internal/db"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
-	http.HandleFunc("GET /", ShowHomePage)
-	log.Fatal(http.ListenAndServe(":8080", nil))
-}
+	sqliteDB, err := sql.Open("sqlite3", "db.sqlite")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func(sqliteDB *sql.DB) {
+		err := sqliteDB.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(sqliteDB)
 
-func ShowHomePage(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := template.ParseFiles("internal/views/index.html")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if err := db.CreateTable(sqliteDB); err != nil {
+		log.Fatal(err)
 	}
-	err = tmpl.Execute(w, nil)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+
+	http.HandleFunc("GET /{$}", controllers.ShowIndex)
+	http.HandleFunc("GET /", controllers.Proxy(sqliteDB))
+	http.HandleFunc("POST /", controllers.Shorten(sqliteDB))
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
